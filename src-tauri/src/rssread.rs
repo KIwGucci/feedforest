@@ -1,5 +1,4 @@
 use chrono::prelude::*;
-// use dirs;
 use rss::Channel;
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::PartialEq;
@@ -19,16 +18,6 @@ const FOLDER_FOR_JSON: &str = "Coding/Database/rssreader/jsondata";
 // 全体設定ファイルのファイル名
 const SETTING_FILE: &str = "Coding/Database/rssreader/feedsetting.json";
 const FEED_URLS: &str = "Coding/Database/rssreader/feedurls.json";
-
-// // Readerのモード
-// #[derive(Debug, Serialize, Deserialize)]
-// pub enum Readermode {
-//     Search,
-//     RedItem,
-//     RedSearch,
-//     Jogai,
-//     Normal,
-// }
 
 // Feed情報を格納する構造体
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -55,15 +44,10 @@ pub struct SettingItem {
 impl SettingItem {
     fn readsetting() -> Result<Self, Box<dyn Error>> {
         /*
-        feedsetting.txtに記載にitemname@と記載後、値を書くことで新しい設定値を定義できる。
-        設定値をファイルから読み出す
-        Setting名称をキーとして設定値をHashMapに格納。タプルの0番目に数値、1番目にVec<文字列>
-        Open Setting file
+        設定値をJsonファイルから読み出す
         */
         let mut filepath = dirs::home_dir().unwrap();
-        // let filepass = PathBuf::from_str(SETTING_FILE)?;
         filepath.push(SETTING_FILE);
-        // println!("{:?}", filepath);
         let f = fs::File::open(filepath)?;
         let mut buffer = BufReader::new(f);
         let mut settings = String::new();
@@ -95,7 +79,6 @@ impl RssReader {
             feeds: Vec::new(),
             prefeeds: Vec::new(),
             setting_item: SettingItem::readsetting().expect("setting file not found."),
-            // select_mode: Readermode::Normal,
             status_message: String::new(),
         };
         new_reader.geturls()?;
@@ -140,7 +123,6 @@ impl RssReader {
 
     pub fn savefeed(&mut self) -> Result<(), Box<dyn Error>> {
         let mut oldfile_path = dirs::home_dir().unwrap();
-        // let mut checkedfile_path = dirs::home_dir().unwrap();
         oldfile_path.push(FOLDER_FOR_JSON);
         if !oldfile_path.exists() {
             fs::create_dir(&oldfile_path)?;
@@ -188,7 +170,7 @@ impl RssReader {
         // jsonファイルから既存feedを読み込み
         if let Ok(oldfeed) = self.read_feed() {
             self.feeds = oldfeed;
-        }else{
+        } else {
             self.feeds.clear();
         };
         // 獲得したrssコンテンツを格納するArc Vec
@@ -290,7 +272,6 @@ fn save_to_json(
     feeds: &mut Vec<FeedItem>,
     maxsize: usize,
 ) -> Result<(), Box<dyn Error>> {
-    // ジャンルごとの取得済Feedとチェック済Feedをjson化する
     // 上限maxsize個のアイテムをjson化して保存
 
     feeds.truncate(maxsize);
