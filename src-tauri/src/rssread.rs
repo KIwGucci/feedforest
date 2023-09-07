@@ -5,14 +5,14 @@ use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::io::{BufReader, BufWriter, Read};
+use std::io::{BufReader, BufWriter};
 use std::iter::FromIterator;
 use std::path::PathBuf;
-
 use std::sync::{Arc, Mutex};
 use std::thread::spawn;
 
 // ホームディレクトリ以下の相対パスで記述
+
 // jsonファイルが格納されているフォルダ
 const FOLDER_FOR_JSON: &str = "Coding/Database/rssreader/jsondata";
 // 全体設定ファイルのファイル名
@@ -49,15 +49,11 @@ impl SettingItem {
         let mut filepath = dirs::home_dir().unwrap();
         filepath.push(SETTING_FILE);
         let f = fs::File::open(filepath)?;
-        let mut buffer = BufReader::new(f);
-        let mut settings = String::new();
-        buffer.read_to_string(&mut settings)?;
-        let result: Self = serde_json::from_str(&settings)?;
+        let buffer = BufReader::new(f);
+        let result: Self = serde_json::from_reader(buffer)?;
         Ok(result)
     }
 }
-#[derive(Debug, Serialize, Deserialize)]
-struct RssUrls(Vec<(String, Vec<String>)>);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RssReader {
@@ -65,7 +61,6 @@ pub struct RssReader {
     pub selected_genre: String,
     pub search_word: String,
     pub feeds: Vec<FeedItem>,
-    pub prefeeds: Vec<FeedItem>,
     pub setting_item: SettingItem,
     pub status_message: String,
 }
@@ -77,7 +72,6 @@ impl RssReader {
             selected_genre: String::new(),
             search_word: String::new(),
             feeds: Vec::new(),
-            prefeeds: Vec::new(),
             setting_item: SettingItem::readsetting().expect("setting file not found."),
             status_message: String::new(),
         };
@@ -93,27 +87,27 @@ impl RssReader {
         self.feed_genres.clear();
 
         let f = fs::File::open(feed_urls_path)?;
-        let mut buffer = BufReader::new(f);
-        let mut rss_url_text = String::new();
+        let buffer = BufReader::new(f);
+        // let mut rss_url_text = String::new();
 
-        buffer.read_to_string(&mut rss_url_text)?;
-        let my_rssurls: RssUrls = serde_json::from_str(&rss_url_text)?;
-        let rssurls = my_rssurls.0;
+        // buffer.read_to_string(&mut rss_url_text)?;
+        let my_rssurls: Vec<(String, Vec<String>)> = serde_json::from_reader(buffer)?;
+        // jsonをHashMap化するため、いろいろ工夫している
 
-        for rurls in &rssurls {
+        my_rssurls.iter().for_each(|rurls| {
             self.feed_genres.push(rurls.0.trim().to_owned());
             result.insert(rurls.0.trim().to_owned(), rurls.1.to_owned());
-        }
+        });
 
         Ok(result)
     }
+
     // 選択したジャンルのjson化したファイルからfeedを読み込み過去のFeedと閲覧済みのFeedの配列を返す
     pub fn read_feed(&mut self) -> Result<Vec<FeedItem>, Box<dyn Error>> {
         let mut oldfile_path = dirs::home_dir().unwrap();
 
         let oldfile = format!("{}/{}_old", FOLDER_FOR_JSON, self.selected_genre);
         oldfile_path.push(oldfile);
-
         oldfile_path.set_extension("json");
 
         let feeds = read_from_json(&oldfile_path)?;
@@ -124,9 +118,6 @@ impl RssReader {
     pub fn savefeed(&mut self) -> Result<(), Box<dyn Error>> {
         let mut oldfile_path = dirs::home_dir().unwrap();
         oldfile_path.push(FOLDER_FOR_JSON);
-        if !oldfile_path.exists() {
-            fs::create_dir(&oldfile_path)?;
-        }
 
         let oldfilename = format!("{}_old", &self.selected_genre);
         oldfile_path.push(oldfilename);
@@ -135,12 +126,21 @@ impl RssReader {
         let save_maxsize = self.setting_item.save_maxsize;
         let mut save_feed = self.feeds.to_vec();
 
-        save_to_json(&oldfile_path, &mut save_feed, save_maxsize)?;
+        match read_from_json(&oldfile_path) {
+            Ok(oldfeeds) => {
+                if oldfeeds != save_feed {
+                    save_to_json(&oldfile_path, &mut save_feed, save_maxsize)?;
+                }
+            }
+            Err(_) => {
+                save_to_json(&oldfile_path, &mut save_feed, save_maxsize)?;
+            }
+        }
 
         Ok(())
     }
 
-    pub fn search_word(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn filter_word(&mut self) -> Result<(), Box<dyn Error>> {
         let is_match = |item: &FeedItem| {
             let swords = self.search_word.split_whitespace();
 
@@ -151,13 +151,15 @@ impl RssReader {
             }
             true
         };
-        let tempfeed = self
+
+        let filtered_feed = self
             .feeds
             .iter()
             .filter(|x| is_match(x))
             .map(|x| x.to_owned());
-        let displayfeeds = Vec::from_iter(tempfeed);
-        self.feeds = displayfeeds;
+
+        self.feeds = Vec::from_iter(filtered_feed);
+
         Ok(())
     }
 
@@ -165,7 +167,6 @@ impl RssReader {
         // myurls:設定ファイルに記述したrss urlのHashMap
         // skipwords: スキップする単語群
         // // 記事フィードを取得してfeeds:Vec<FeedItem>に格納
-        self.prefeeds = self.feeds.to_owned();
 
         // jsonファイルから既存feedを読み込み
         if let Ok(oldfeed) = self.read_feed() {
@@ -173,6 +174,7 @@ impl RssReader {
         } else {
             self.feeds.clear();
         };
+
         // 獲得したrssコンテンツを格納するArc Vec
         let webdata = Arc::new(Mutex::new(Vec::new()));
         // 生成したスレッドを格納するVec
@@ -213,6 +215,7 @@ impl RssReader {
 
                     for i in rss_channel_iter {
                         // 日付を文字列にパース
+
                         let parsedate = if i.pub_date().is_some() {
                             DateTime::parse_from_rfc2822(i.pub_date().expect("trance date error"))
                                 .expect("parse date Error")
@@ -229,7 +232,9 @@ impl RssReader {
                             parsedate,
                         );
 
-                        if self.feeds.contains(&getitem) || self.is_skip_feed(&getitem, true) {
+                        if self.feeds.iter().any(|x| x.title == getitem.title)
+                            || self.is_skip_feed(&getitem, true)
+                        {
                             continue;
                         } else {
                             self.feeds.push(getitem);
@@ -256,11 +261,21 @@ impl RssReader {
             &self.setting_item.skip_words
         };
         // スキップする単語が含まれるか判定
-        for s in check_items.iter() {
-            if s.is_empty() {
-                continue;
-            } else if feeditem.title.contains(s) {
-                return true;
+        if is_link {
+            for s in check_items.iter() {
+                if s.is_empty() {
+                    continue;
+                } else if feeditem.link.contains(s.trim()) {
+                    return true;
+                }
+            }
+        } else {
+            for s in check_items.iter() {
+                if s.is_empty() {
+                    continue;
+                } else if feeditem.title.contains(s) {
+                    return true;
+                }
             }
         }
         false
@@ -298,6 +313,7 @@ fn get_feedtest() {
     rss.getfeed(myurls).unwrap();
     println!("{:?}", rss);
 }
+
 
 #[test]
 fn jsontest() {

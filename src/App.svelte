@@ -1,12 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/tauri";
   import FeedList from "./lib/FeedList.svelte";
-
-
+  import { selected_genre } from "./lib/stores";
+  import Selecter from "./lib/Selecter.svelte";
 
   type FeedItem = { title: string; link: string; date: string };
   type FeedState = { feeditems: FeedItem[]; message: string };
   type RssUrls = { [key: string]: string[] };
+
   type SearchToken = {
     selected_genre: string;
     rss_urls: RssUrls;
@@ -16,8 +17,9 @@
   let feedlist: FeedList;
   let rss_urls: RssUrls = { "": [""] };
   let search_word: string = "";
+  let display_word: string = "";
+  $: search_tags = display_word.split(" ");
   let genres = Object.keys(rss_urls);
-  let selected_genre: string = genres[0];
   let feeditems: FeedItem[] = [];
   let status_message = "";
 
@@ -25,63 +27,116 @@
     // Url設定ファイルからRss Urlとジャンルを読み出し
     rss_urls = await invoke("get_urls", {});
     genres = Object.keys(rss_urls);
-    selected_genre = "News";
+    $selected_genre = "News";
   }
 
-  async function get_feeds(myselected_genre:string) {
+  async function get_all_feeds() {
+    await invoke("get_all_feeds", {});
+  }
+
+  async function is_today() {
+    let result = await getFeeds(true)
+      .then(() => {
+        let lastday = new Date(feeditems[0].date);
+        let todayst = new Date();
+        return lastday.toLocaleDateString() === todayst.toLocaleDateString();
+      })
+      .catch((error) => {
+        status_message = error;
+        return false;
+      });
+    return result;
+  }
+  async function getFeeds(fstock: boolean) {
     // 現在選択されているジャンルのフィードを取得する
+    // isGetallがtrueの時、ローカルに保存しているデータのみを返す.
     let searchToken: SearchToken = {
-      selected_genre:myselected_genre,
+      selected_genre: $selected_genre,
       rss_urls,
       search_word,
     };
-
-  
+    display_word = search_word;
     let result: FeedState = await invoke("get_feeds", {
       searchToken,
+      fromStock: fstock,
     });
     feeditems = result.feeditems;
     status_message = result.message;
   }
 
-  async function listhandler() {
-    await get_feeds(selected_genre);
+  async function reload_feed() {
+    // 現在選択されているジャンルのフィードを取得する
+    // 必ずNetからFeedを取得する
+    await getFeeds(false);
+  }
+
+  function listhandler() {
     feedlist.gotop();
+    status_message =
+      search_word === "" ? status_message : "Search Word:" + search_word;
+    search_word = "";
+  }
+
+  async function select_handler() {
+    await getFeeds(false);
+    listhandler();
+  }
+
+  async function search_handler() {
+    await getFeeds(true);
+    listhandler();
+  }
+
+  async function initfunction() {
+    // 初回に一度だけ処理したい工程を集めた関数
+    await get_urls();
+    let stockistoday = await is_today();
+    if (!stockistoday) {
+      await get_all_feeds();
+    }else{
+      await getFeeds(false);
+    }
 
   }
-  async function initfunction() {
-    await get_urls();
-    get_feeds(selected_genre);
-  }
-  // 初回一回だけ実行
-  initfunction();
+
+  initfunction()
+    .then()
+    .catch((err) => (status_message = err));
 </script>
 
 <main class="container">
-  
-    <div class="row">
-      <select bind:value={selected_genre} on:change={listhandler}>
-        {#each genres as genr}
-          <option value={genr}>
-            {genr}
-          </option>
-        {/each}
-      </select>
+  <div class="row" id="operate">
+    <form on:change|preventDefault={select_handler}>
+      <Selecter {genres} />
+    </form>
 
-      <form on:submit|preventDefault={listhandler}>
-        <input
-          type="text"
-          id="searchword"
-          placeholder="input search word"
-          bind:value={search_word}
-        />
-      </form>
+    <form on:submit|preventDefault={search_handler}>
+      <input
+        type="text"
+        id="searchword"
+        placeholder="input search word"
+        bind:value={search_word}
+      />
+    </form>
 
-      <!-- row end -->
-    </div>
+    <button on:click|preventDefault={reload_feed}>Reload</button>
 
-    <FeedList feeditems= {feeditems} bind:this={feedlist} />
+    {#each search_tags as stag}
+      <div id="displayword">
+        {stag}
+      </div>
+    {/each}
 
+    <!-- row end -->
+  </div>
+  {#if feeditems.length > 0}
+    <FeedList {feeditems} bind:this={feedlist} />
+  {:else}
+    <p id="waiting">Please wait a moment</p>
+  {/if}
+  {#if status_message !== undefined}
+    <p style="margin-left: 3rem;">{status_message}</p>
+  {/if}
 </main>
 
 <style>
@@ -102,16 +157,39 @@
   .row {
     display: flex;
     justify-content: center;
+    align-items: center;
   }
-  input,
-  select {
+  input {
     border-radius: 3px;
-    /* border: 1px solid transparent; */
     padding: 0.1em 0.8em;
     font-size: 1em;
     font-weight: 500;
     font-family: inherit;
     color: #534e4e;
-    /* transition: border-color 0.25s; */
+    transition: border-color 0.25s;
+    margin-left: 1em;
+  }
+  button {
+    font-size: 1em;
+    font-family: inherit;
+    background-color: white;
+    border-radius: 5px;
+    border-style: groove;
+    padding: 0 0.5em;
+    margin-left: 1em;
+  }
+  button:hover {
+    background-color: rgb(170, 190, 135);
+  }
+  #waiting {
+    font-size: large;
+    text-align: center;
+  }
+  #displayword {
+    background-color: #e5b3f1;
+    color: white;
+    padding-inline: 0.2rem;
+    margin-inline-start: 1em;
+    border-radius: 0.2rem;
   }
 </style>
