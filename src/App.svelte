@@ -166,23 +166,26 @@
     justify-content: center;
     align-items: center;
   }
-  input {
+  /* input {
     border-radius: 3px;
-    padding: 0.1em 0.8em;
+    padding: 0.2em 0.5em;
     font-size: 1em;
     font-weight: 500;
     font-family: inherit;
-    color: #534e4e;
+    color:black;
+    text-align: center;
+    border-style: ridge;
+    border-color: gray;
     transition: border-color 0.25s;
     margin-left: 1em;
-  }
-  button {
+  } */
+  button,input {
     font-size: 1em;
     font-family: inherit;
     background-color: white;
     border-radius: 5px;
     border-style:ridge;
-    padding: 0 0.5em;
+    padding: 0.25em 0.5em;
     margin-left: 1em;
   }
   button:hover {
@@ -193,7 +196,7 @@
     text-align: center;
   }
   #displayword {
-    background-color: #e5b3f1;
+    background-color:darkslateblue;
     color: white;
     padding-inline: 0.2rem;
     margin-inline-start: 1em;
