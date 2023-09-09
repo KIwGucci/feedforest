@@ -26,8 +26,8 @@
   }
 
   article:hover {
-    color: rgb(18, 5, 54);
-    background-color: rgba(190, 214, 154, 0.826);
+    color: chocolate;
+    background-color:lemonchiffon;
     border-radius: 3px;
   }
   /* .datestring {

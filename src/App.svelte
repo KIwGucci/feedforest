@@ -23,6 +23,8 @@
   let feeditems: FeedItem[] = [];
   let status_message = "";
 
+  let is_stock = true;
+
   async function get_urls() {
     // Url設定ファイルからRss Urlとジャンルを読み出し
     rss_urls = await invoke("get_urls", {});
@@ -35,19 +37,15 @@
   }
 
   async function is_today() {
-    let result = await getFeeds(true)
-      .then(() => {
-        let lastday = new Date(feeditems[0].date);
-        let todayst = new Date();
-        return lastday.toLocaleDateString() === todayst.toLocaleDateString();
-      })
-      .catch((error) => {
-        status_message = error;
-        return false;
-      });
-    return result;
+    is_stock = true;
+    await getFeeds();
+
+    let lastday = new Date(feeditems[0].date);
+    let todayst = new Date();
+    return lastday.toLocaleDateString() === todayst.toLocaleDateString();
   }
-  async function getFeeds(fstock: boolean) {
+
+  async function getFeeds() {
     // 現在選択されているジャンルのフィードを取得する
     // isGetallがtrueの時、ローカルに保存しているデータのみを返す.
     let searchToken: SearchToken = {
@@ -56,18 +54,23 @@
       search_word,
     };
     display_word = search_word;
+
     let result: FeedState = await invoke("get_feeds", {
       searchToken,
-      fromStock: fstock,
+      fromStock: is_stock,
     });
+
     feeditems = result.feeditems;
     status_message = result.message;
   }
 
-  async function reload_feed() {
+  function reload_feed() {
     // 現在選択されているジャンルのフィードを取得する
     // 必ずNetからFeedを取得する
-    await getFeeds(false);
+    is_stock = false;
+    getFeeds().catch((err) => {
+      status_message = err;
+    });
   }
 
   function listhandler() {
@@ -77,67 +80,71 @@
     search_word = "";
   }
 
-  async function select_handler() {
-    await getFeeds(false);
-    listhandler();
+  function select_handler() {
+    is_stock = false;
+    getFeeds().then(() => {
+      listhandler();
+    });
   }
 
-  async function search_handler() {
-    await getFeeds(true);
-    listhandler();
+  function search_handler() {
+    is_stock = true;
+    getFeeds().then(() => {
+      listhandler();
+    });
   }
 
   async function initfunction() {
     // 初回に一度だけ処理したい工程を集めた関数
-    await get_urls();
-    let stockistoday = await is_today();
-    if (!stockistoday) {
-      await get_all_feeds();
-    }else{
-      await getFeeds(false);
-    }
+    get_urls().then(async () => {
+      let stockistoday = await is_today();
+      if (!stockistoday) {
+        await get_all_feeds();
+        console.log("all gets")
+      } else {
 
+        await getFeeds();
+      }
+    });
   }
-
-  initfunction()
-    .then()
-    .catch((err) => (status_message = err));
 </script>
 
-<main class="container">
-  <div class="row" id="operate">
-    <form on:change|preventDefault={select_handler}>
-      <Selecter {genres} />
-    </form>
+{#await initfunction()}
+  <p id="waiting">更新を待っています</p>
+{:then}
+  <main class="container">
+    <div class="row" id="operate">
+      <form on:change|preventDefault={select_handler}>
+        <Selecter {genres} />
+      </form>
 
-    <form on:submit|preventDefault={search_handler}>
-      <input
-        type="text"
-        id="searchword"
-        placeholder="input search word"
-        bind:value={search_word}
-      />
-    </form>
+      <form on:submit|preventDefault={search_handler}>
+        <input
+          type="text"
+          id="searchword"
+          placeholder="input search word"
+          bind:value={search_word}
+        />
+      </form>
 
-    <button on:click|preventDefault={reload_feed}>Reload</button>
+      <button on:click|preventDefault={reload_feed}>Reload</button>
 
-    {#each search_tags as stag}
-      <div id="displayword">
-        {stag}
-      </div>
-    {/each}
+      {#each search_tags as stag}
+        <div id="displayword">
+          {stag}
+        </div>
+      {/each}
 
-    <!-- row end -->
-  </div>
-  {#if feeditems.length > 0}
+      <!-- row end -->
+    </div>
+
     <FeedList {feeditems} bind:this={feedlist} />
-  {:else}
-    <p id="waiting">Please wait a moment</p>
-  {/if}
-  {#if status_message !== undefined}
-    <p style="margin-left: 3rem;">{status_message}</p>
-  {/if}
-</main>
+
+    {#if status_message !== undefined}
+      <p style="margin-left: 3rem;">{status_message}</p>
+    {/if}
+  </main>
+{/await}
 
 <style>
   :root {
@@ -145,8 +152,8 @@
     font-size: 16px;
     line-height: 24px;
 
-    color: #110101;
-    background-color: #f4f8eb;
+    color: #ece1e1;
+    background-color: whitesmoke;
 
     font-synthesis: none;
     text-rendering: optimizeLegibility;
@@ -174,12 +181,12 @@
     font-family: inherit;
     background-color: white;
     border-radius: 5px;
-    border-style: groove;
+    border-style:ridge;
     padding: 0 0.5em;
     margin-left: 1em;
   }
   button:hover {
-    background-color: rgb(170, 190, 135);
+    background-color: lightskyblue
   }
   #waiting {
     font-size: large;
