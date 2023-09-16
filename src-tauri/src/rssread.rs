@@ -223,7 +223,8 @@ impl RssReader {
                         } else if i.dublin_core_ext().is_some() {
                             i.dublin_core_ext().unwrap().dates()[0].to_string()
                         } else {
-                            continue;
+                            let today =Local::now();
+                            today.format("%Y-%m-%d").to_string()
                         };
 
                         let getitem = FeedItem::new(
@@ -313,7 +314,6 @@ fn get_feedtest() {
     rss.getfeed(myurls).unwrap();
     println!("{:?}", rss);
 }
-
 
 #[test]
 fn jsontest() {

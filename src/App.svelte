@@ -23,8 +23,6 @@
   let feeditems: FeedItem[] = [];
   let status_message = "";
 
-  let is_stock = true;
-
   async function get_urls() {
     // Url設定ファイルからRss Urlとジャンルを読み出し
     rss_urls = await invoke("get_urls", {});
@@ -37,15 +35,14 @@
   }
 
   async function is_today() {
-    is_stock = true;
-    await getFeeds();
+    await getFeeds(true);
 
     let lastday = new Date(feeditems[0].date);
     let todayst = new Date();
     return lastday.toLocaleDateString() === todayst.toLocaleDateString();
   }
 
-  async function getFeeds() {
+  async function getFeeds(is_stock: boolean) {
     // 現在選択されているジャンルのフィードを取得する
     // isGetallがtrueの時、ローカルに保存しているデータのみを返す.
     let searchToken: SearchToken = {
@@ -67,8 +64,8 @@
   function reload_feed() {
     // 現在選択されているジャンルのフィードを取得する
     // 必ずNetからFeedを取得する
-    is_stock = false;
-    getFeeds().catch((err) => {
+
+    getFeeds(false).catch((err) => {
       status_message = err;
     });
   }
@@ -81,15 +78,13 @@
   }
 
   function select_handler() {
-    is_stock = false;
-    getFeeds().then(() => {
+    getFeeds(false).then(() => {
       listhandler();
     });
   }
 
   function search_handler() {
-    is_stock = true;
-    getFeeds().then(() => {
+    getFeeds(true).then(() => {
       listhandler();
     });
   }
@@ -99,11 +94,11 @@
     get_urls().then(async () => {
       let stockistoday = await is_today();
       if (!stockistoday) {
-        await get_all_feeds();
-        console.log("all gets")
+        get_all_feeds().then(async () => {
+          return getFeeds(true);
+        });
       } else {
-
-        await getFeeds();
+        return getFeeds(false);
       }
     });
   }
@@ -179,24 +174,25 @@
     transition: border-color 0.25s;
     margin-left: 1em;
   } */
-  button,input {
+  button,
+  input {
     font-size: 1em;
     font-family: inherit;
     background-color: white;
     border-radius: 5px;
-    border-style:ridge;
+    border-style: ridge;
     padding: 0.25em 0.5em;
     margin-left: 1em;
   }
   button:hover {
-    background-color: lightskyblue
+    background-color: lightskyblue;
   }
   #waiting {
     font-size: large;
     text-align: center;
   }
   #displayword {
-    background-color:darkslateblue;
+    background-color: darkslateblue;
     color: white;
     padding-inline: 0.2rem;
     margin-inline-start: 1em;

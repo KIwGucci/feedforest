@@ -21,13 +21,13 @@ struct SearchToken {
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
-fn get_feeds(search_token: SearchToken, from_stock: bool) -> FeedState {
+async fn get_feeds(search_token: SearchToken, from_stock: bool) -> FeedState {
     let mut rssreader = RssReader::new().unwrap();
 
     rssreader.selected_genre = search_token.selected_genre;
     rssreader.search_word = search_token.search_word.trim().to_owned();
 
-    if !rssreader.search_word.is_empty() || from_stock{
+    if !rssreader.search_word.is_empty() || from_stock {
         match rssreader.read_feed() {
             Ok(feeds) => {
                 rssreader.feeds = feeds;
@@ -64,8 +64,8 @@ fn get_urls() -> HashMap<String, Vec<String>> {
     rssreader.geturls().unwrap()
 }
 
-#[tauri::command]
-fn get_all_feeds() {
+#[tauri::command(async)]
+async fn get_all_feeds() {
     let mut rssreader = RssReader::new().unwrap();
     let url_dic = rssreader.geturls().unwrap();
     let genres = url_dic.keys();
