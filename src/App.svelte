@@ -36,7 +36,6 @@
 
   async function is_today() {
     await getFeeds(true);
-
     let lastday = new Date(feeditems[0].date);
     let todayst = new Date();
     return lastday.toLocaleDateString() === todayst.toLocaleDateString();
@@ -61,11 +60,15 @@
     status_message = result.message;
   }
 
-  function reload_feed() {
+  async function reload_feed() {
     // 現在選択されているジャンルのフィードを取得する
     // 必ずNetからFeedを取得する
+    const res = getFeeds(false);
+    res.then(() => {
+      listhandler();
+    });
 
-    getFeeds(false).catch((err) => {
+    res.catch((err) => {
       status_message = err;
     });
   }
@@ -78,8 +81,12 @@
   }
 
   function select_handler() {
-    getFeeds(false).then(() => {
+    let res = getFeeds(false);
+    res.then(() => {
       listhandler();
+    });
+    res.catch((err) => {
+      status_message = err;
     });
   }
 

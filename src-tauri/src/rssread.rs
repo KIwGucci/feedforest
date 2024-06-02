@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use chrono::prelude::*;
 use rss::Channel;
 use serde_derive::{Deserialize, Serialize};
@@ -33,7 +34,7 @@ impl FeedItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SettingItem {
     save_maxsize: usize,
     skip_words: Vec<String>,
@@ -55,7 +56,7 @@ impl SettingItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RssReader {
     pub feed_genres: Vec<String>,
     pub selected_genre: String,
@@ -75,12 +76,16 @@ impl RssReader {
             setting_item: SettingItem::readsetting().expect("setting file not found."),
             status_message: String::new(),
         };
+
         new_reader.geturls()?;
-        new_reader.selected_genre = new_reader.feed_genres[0].to_owned();
+        new_reader
+            .selected_genre
+            .clone_from(&new_reader.feed_genres[0]);
         Ok(new_reader)
     }
 
     pub fn geturls(&mut self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        // jsonファイルからURL情報を呼び出す
         let mut feed_urls_path = dirs::home_dir().unwrap();
         let mut result = HashMap::new();
         feed_urls_path.push(FEED_URLS);
@@ -88,22 +93,20 @@ impl RssReader {
 
         let f = fs::File::open(feed_urls_path)?;
         let buffer = BufReader::new(f);
-        // let mut rss_url_text = String::new();
 
-        // buffer.read_to_string(&mut rss_url_text)?;
         let my_rssurls: Vec<(String, Vec<String>)> = serde_json::from_reader(buffer)?;
-        // jsonをHashMap化するため、いろいろ工夫している
 
         my_rssurls.iter().for_each(|rurls| {
             self.feed_genres.push(rurls.0.trim().to_owned());
+
             result.insert(rurls.0.trim().to_owned(), rurls.1.to_owned());
         });
 
         Ok(result)
     }
 
-    // 選択したジャンルのjson化したファイルからfeedを読み込み過去のFeedと閲覧済みのFeedの配列を返す
     pub fn read_feed(&mut self) -> Result<Vec<FeedItem>, Box<dyn Error>> {
+        // 選択したジャンルのjson化したファイルからfeedを読み込み過去のFeedと閲覧済みのFeedの配列を返す
         let mut oldfile_path = dirs::home_dir().unwrap();
 
         let oldfile = format!("{}/{}_old", FOLDER_FOR_JSON, self.selected_genre);
@@ -163,7 +166,7 @@ impl RssReader {
         Ok(())
     }
 
-    pub fn getfeed(&mut self, myurls: HashMap<String, Vec<String>>) -> Result<(), Box<dyn Error>> {
+    pub fn getfeed(&mut self, myurls: &HashMap<String, Vec<String>>) -> Result<(), Box<dyn Error>> {
         // myurls:設定ファイルに記述したrss urlのHashMap
         // skipwords: スキップする単語群
         // // 記事フィードを取得してfeeds:Vec<FeedItem>に格納
@@ -174,36 +177,61 @@ impl RssReader {
         } else {
             self.feeds.clear();
         };
+        // 分割スレッド数
+        let thread_num = 4;
 
         // 獲得したrssコンテンツを格納するArc Vec
         let webdata = Arc::new(Mutex::new(Vec::new()));
+
+        //選択されたジャンルのurl
+        let selected_urls = &myurls[&self.selected_genre];
+        let selected_length = selected_urls.len();
+
         // 生成したスレッドを格納するVec
         let mut threads = Vec::new();
+        // １スレッドが受け持つurlの数
+        let url_num = selected_urls.len() / thread_num;
 
-        myurls[&self.selected_genre].iter().for_each(|rss_url| {
-            // url毎にスレッドを生成し、並列でコンテンツを取得する。
-            let rss_url = rss_url.to_owned();
+        for i in 0..thread_num {
+            let start = i * url_num;
+            let end = (start + url_num).min(selected_length);
             let webdata = Arc::clone(&webdata);
-            // 並列処理のためのスレッドを生成
+
+            let div_urls = selected_urls[start..end].to_vec();
+
             threads.push(spawn(move || {
-                let content = reqwest::blocking::get(&rss_url);
-                if let Ok(res) = content {
-                    //lockを獲得
-                    let mut webdata = webdata.lock().expect("Lock Error");
-                    // スレッド内で獲得したコンテンツをArc<Mutex<Vec>>に格納
-                    webdata.push((res.bytes().unwrap(), rss_url));
-                };
+                for rss_url in &div_urls {
+                    let content = reqwest::blocking::get(rss_url);
+                    if let Ok(res) = content {
+                        let mut webdata = webdata.lock().expect("Lock Error");
+                        let rss_url = rss_url.to_string();
+                        webdata.push((res.bytes().unwrap(), rss_url));
+                    }
+                }
             }));
-        });
+        }
+
         // 並列でスレッドのjoin処理
         threads.into_iter().for_each(|th| {
             th.join().unwrap();
         });
         // 獲得したコンテンツをVecに格納
         let contents = webdata.lock().unwrap().to_vec();
+        // Rss形式のデータを整形して self.feedsに格納
+        self.rss_channel_read(contents)?;
 
+        // 獲得したFeedを日付でソート
+        self.feeds.sort_by_cached_key(|k| k.date.to_owned());
+        self.feeds.reverse();
+
+        Ok(())
+    }
+
+    fn rss_channel_read(&mut self, contents: Vec<(Bytes, String)>) -> Result<(), Box<dyn Error>> {
+        // rss形式のcontentをFeedItem形式に落とし込み、self.feeds:Vec<FeedItem>に格納
         contents.into_iter().for_each(|(content, _rss_url)| {
             let rss_channel;
+
             match Channel::read_from(content.as_ref()) {
                 Ok(c) => {
                     rss_channel = c;
@@ -223,7 +251,7 @@ impl RssReader {
                         } else if i.dublin_core_ext().is_some() {
                             i.dublin_core_ext().unwrap().dates()[0].to_string()
                         } else {
-                            let today =Local::now();
+                            let today = Local::now();
                             today.format("%Y-%m-%d").to_string()
                         };
 
@@ -247,10 +275,6 @@ impl RssReader {
                 }
             };
         });
-
-        // 獲得したFeedを日付でソート
-        self.feeds.sort_by_cached_key(|k| k.date.to_owned());
-        self.feeds.reverse();
 
         Ok(())
     }
@@ -311,7 +335,7 @@ fn read_from_json(filename: &PathBuf) -> Result<Vec<FeedItem>, Box<dyn Error>> {
 fn get_feedtest() {
     let mut rss = RssReader::new().unwrap();
     let myurls = rss.geturls().unwrap();
-    rss.getfeed(myurls).unwrap();
+    rss.getfeed(&myurls).unwrap();
     println!("{:?}", rss);
 }
 

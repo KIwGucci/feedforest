@@ -3,12 +3,11 @@
   // import { invoke } from "@tauri-apps/api/tauri";
   export let mfeed: FeedItem;
   export let mindex: number;
-
 </script>
 
 <article>
-  <a href={mfeed.link} target="_blank">
-    {mindex + 1}: {mfeed.title} | {mfeed.date.split('T')[0]}
+  <a href={mfeed.link} title={mfeed.title} target="_blank">
+    {mindex + 1}: {mfeed.title} | {mfeed.date.split("T")[0]}
   </a>
 </article>
 
@@ -27,7 +26,7 @@
 
   article:hover {
     color: chocolate;
-    background-color:lemonchiffon;
+    background-color: lemonchiffon;
     border-radius: 3px;
   }
   /* .datestring {

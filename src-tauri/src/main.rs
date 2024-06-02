@@ -1,7 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod rssread;
-// use chrono::{prelude::*, Duration};
 use rssread::{FeedItem, RssReader};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,7 +24,10 @@ async fn get_feeds(search_token: SearchToken, from_stock: bool) -> FeedState {
     let mut rssreader = RssReader::new().unwrap();
 
     rssreader.selected_genre = search_token.selected_genre;
-    rssreader.search_word = search_token.search_word.trim().to_owned();
+    search_token
+        .search_word
+        .trim()
+        .clone_into(&mut rssreader.search_word);
 
     if !rssreader.search_word.is_empty() || from_stock {
         match rssreader.read_feed() {
@@ -44,7 +46,7 @@ async fn get_feeds(search_token: SearchToken, from_stock: bool) -> FeedState {
             Err(e) => rssreader.status_message = e.to_string(),
         };
     } else {
-        match rssreader.getfeed(search_token.rss_urls) {
+        match rssreader.getfeed(&search_token.rss_urls) {
             Ok(_) => rssreader.savefeed().unwrap(),
             Err(e) => rssreader.status_message = e.to_string(),
         };
@@ -72,7 +74,7 @@ async fn get_all_feeds() {
 
     for genre in genres {
         rssreader.selected_genre = genre.to_string();
-        if rssreader.getfeed(url_dic.to_owned()).is_ok() {
+        if rssreader.getfeed(&url_dic.to_owned()).is_ok() {
             rssreader.savefeed().unwrap()
         };
     }
