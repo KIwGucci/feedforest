@@ -89,54 +89,51 @@ impl RssReader {
         let mut feed_urls_path = dirs::home_dir().unwrap();
         let mut result = HashMap::new();
         feed_urls_path.push(FEED_URLS);
-        self.feed_genres.clear();
 
         let f = fs::File::open(feed_urls_path)?;
         let buffer = BufReader::new(f);
-
         let my_rssurls: Vec<(String, Vec<String>)> = serde_json::from_reader(buffer)?;
 
-        my_rssurls.iter().for_each(|rurls| {
-            self.feed_genres.push(rurls.0.trim().to_owned());
+        self.feed_genres = my_rssurls.iter().map(|x| x.0.trim().to_owned()).collect();
 
+        my_rssurls.iter().for_each(|rurls| {
             result.insert(rurls.0.trim().to_owned(), rurls.1.to_owned());
         });
 
         Ok(result)
     }
 
+    fn get_oldfile_path(&self) -> PathBuf {
+        let mut oldfile_path = dirs::home_dir().unwrap();
+        oldfile_path.push(FOLDER_FOR_JSON);
+        let oldfilename = format!("{}_old", &self.selected_genre);
+        oldfile_path.push(oldfilename);
+        oldfile_path.set_extension("json");
+        oldfile_path
+    }
+
     pub fn read_feed(&mut self) -> Result<Vec<FeedItem>, Box<dyn Error>> {
         // 選択したジャンルのjson化したファイルからfeedを読み込み過去のFeedと閲覧済みのFeedの配列を返す
-        let mut oldfile_path = dirs::home_dir().unwrap();
-
-        let oldfile = format!("{}/{}_old", FOLDER_FOR_JSON, self.selected_genre);
-        oldfile_path.push(oldfile);
-        oldfile_path.set_extension("json");
+        let oldfile_path = self.get_oldfile_path();
 
         let feeds = read_from_json(&oldfile_path)?;
 
         Ok(feeds)
     }
 
-    pub fn savefeed(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut oldfile_path = dirs::home_dir().unwrap();
-        oldfile_path.push(FOLDER_FOR_JSON);
-
-        let oldfilename = format!("{}_old", &self.selected_genre);
-        oldfile_path.push(oldfilename);
-        oldfile_path.set_extension("json");
-
+    pub fn savefeed(&self) -> Result<(), Box<dyn Error>> {
+        let oldfile_path = self.get_oldfile_path();
         let save_maxsize = self.setting_item.save_maxsize;
-        let mut save_feed = self.feeds.to_vec();
+        let save_feed = self.feeds.to_vec();
 
         match read_from_json(&oldfile_path) {
             Ok(oldfeeds) => {
                 if oldfeeds != save_feed {
-                    save_to_json(&oldfile_path, &mut save_feed, save_maxsize)?;
+                    save_to_json(&oldfile_path, save_feed, save_maxsize)?;
                 }
             }
             Err(_) => {
-                save_to_json(&oldfile_path, &mut save_feed, save_maxsize)?;
+                save_to_json(&oldfile_path, save_feed, save_maxsize)?;
             }
         }
 
@@ -196,7 +193,6 @@ impl RssReader {
             let start = i * url_num;
             let end = (start + url_num).min(selected_length);
             let webdata = Arc::clone(&webdata);
-
             let div_urls = selected_urls[start..end].to_vec();
 
             threads.push(spawn(move || {
@@ -309,17 +305,18 @@ impl RssReader {
 
 fn save_to_json(
     filename: &PathBuf,
-    feeds: &mut Vec<FeedItem>,
+    feeds: Vec<FeedItem>,
     maxsize: usize,
 ) -> Result<(), Box<dyn Error>> {
     // 上限maxsize個のアイテムをjson化して保存
+    let mut feeds = feeds.to_owned();
 
     feeds.truncate(maxsize);
 
     let file = fs::File::create(filename)?;
 
     let writer = BufWriter::new(file);
-    serde_json::to_writer(writer, feeds)?;
+    serde_json::to_writer(writer, &feeds)?;
 
     Ok(())
 }
@@ -348,8 +345,8 @@ fn jsontest() {
         "2023/7/8".to_string(),
     );
     let filename = PathBuf::from_str("./test.json").unwrap();
-    let mut feeds = vec![anitem];
-    save_to_json(&filename, &mut feeds, 5).unwrap();
+    let feeds = vec![anitem];
+    save_to_json(&filename, feeds, 5).unwrap();
     let items = read_from_json(&filename).unwrap();
     println!("{:?}", items);
 }
